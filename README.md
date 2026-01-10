@@ -1,5 +1,5 @@
 # lookupCacheAPI
-Semi persistant TTL lookup passthrough
+Semi persistent TTL lookup passthrough
 
 ```bash
 make

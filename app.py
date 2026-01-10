@@ -1,14 +1,15 @@
-from collections.abc import Sequence
-#from typing import TYPE_CHECKING
+import datetime
+from pathlib import path
+from typing import TYPE_CHECKING
 
 import litestar
+import sqlalchemy
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
-from sqlalchemy import select
 
-from database import Base, LookupItem
+from database import Base, JsonObject, LookupItem
 
-#if TYPE_CHECKING:
-from sqlalchemy.ext.asyncio import AsyncSession
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 database_config = SQLAlchemyAsyncConfig(
@@ -17,29 +18,36 @@ database_config = SQLAlchemyAsyncConfig(
     metadata=Base.metadata,
 )
 
+README = path("README.md").read_text()
+
 
 @litestar.get("/")
-async def index() -> str:
-    return "Hello, world!"
+async def root() -> str:
+    return README
 
 
-@litestar.get("/books/{book_id:int}")
-async def get_book(book_id: int) -> dict[str, int]:
-    return {"book_id": book_id}
+async def get(id: str) -> JsonObject:
+    raise NotImplementedError()
 
 
-@litestar.post("/add")
-async def add_item(data: LookupItem, db_session: AsyncSession) -> Sequence[LookupItem]:
+@litestar.get("/lookup/{id:str}")
+async def lookup_item(id, db_session: AsyncSession) -> JsonObject:
+    item: LookupItem = await db_session.execute(sqlalchemy.select(LookupItem).where(LookupItem.id == id)).first()
+    if item and (item.timestamp > datetime.datetime.now() - datetime.timedelta(minutes=60)):
+        return item.payload
+
+    item_payload = await get(id)
+    if not item_payload:
+        return {}
     async with db_session.begin():
-        db_session.add(data)
-    return (await db_session.execute(select(LookupItem))).scalars().all()
+        db_session.add(LookupItem(payload=item_payload))
+    return item_payload
 
 
 app = litestar.Litestar(
     (
-        index,
-        get_book,
-        add_item,
+        root,
+        lookup_item,
     ),
     plugins=(SQLAlchemyPlugin(config=database_config),),
 )
