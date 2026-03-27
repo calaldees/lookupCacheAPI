@@ -2,7 +2,10 @@ import datetime
 import os
 from pathlib import Path
 import logging
+from typing import AsyncGenerator
+from contextlib import asynccontextmanager
 
+import aiohttp
 import litestar
 import sqlalchemy
 from litestar.plugins.sqlalchemy import SQLAlchemyAsyncConfig, SQLAlchemyPlugin
@@ -28,20 +31,29 @@ database_config = SQLAlchemyAsyncConfig(
 README = Path("README.md").read_text()
 
 
+@asynccontextmanager
+async def aiohttp_session(app: litestar.Litestar) -> AsyncGenerator[aiohttp.ClientSession]:
+    async with aiohttp.ClientSession() as session:
+        app.state.aiohttp_session = session
+        yield session
+def provide_aiohttp_session(request: litestar.Request) -> aiohttp.ClientSession:
+    return request.app.state.aiohttp_session
+
+
 @litestar.get("/")
 async def root() -> str:
     return README
 
 
 @litestar.get("/lookup/{id:str}")
-async def lookup_item(id: str, db_session: AsyncSession) -> JsonObject:
+async def lookup_item(id: str, db_session: AsyncSession, session: aiohttp.ClientSession) -> JsonObject:
     now = datetime.datetime.now()
     item: LookupItem = (await db_session.scalars(sqlalchemy.select(LookupItem).where(LookupItem.id == id))).first()
     if item and (item.timestamp > now - CACHE_TIMEOUT):
         #log.info(f'cached {id} - remaining {CACHE_TIMEOUT + (item.timestamp - now)}')
         return item.payload
 
-    item_payload = await lookup(id)
+    item_payload = await lookup(session, id)
     if not item_payload:
         return {}
 
@@ -63,4 +75,6 @@ def create_app() -> litestar.LiteStar:
             lookup_item,
         ),
         plugins=(SQLAlchemyPlugin(config=database_config),),
+        lifespan=[aiohttp_session],
+        dependencies={'session': litestar.di.Provide(provide_aiohttp_session)},
     )
