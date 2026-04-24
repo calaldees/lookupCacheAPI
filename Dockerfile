@@ -14,3 +14,5 @@ ENTRYPOINT [ "uv", "run", "litestar", "run" ]
 ENV LITESTAR_PORT=8000
 ENV LITESTAR_HOST=0.0.0.0
 EXPOSE 8000
+VOLUME [ "/app/lookup.sqlite" ]
+ENV CACHE_TIMEOUT_MINUTES=9999

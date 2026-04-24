@@ -54,8 +54,6 @@ async def lookup_item(id: str, db_session: AsyncSession, session: aiohttp.Client
         return item.payload
 
     item_payload = await lookup(session, id)
-    if not item_payload:
-        return {}
 
     if item:
         #log.info(f'update {id}')
@@ -65,6 +63,7 @@ async def lookup_item(id: str, db_session: AsyncSession, session: aiohttp.Client
         #log.info(f'new {id}')
         db_session.add(LookupItem(id=id, payload=item_payload, timestamp=now))
     await db_session.commit()
+
     return item_payload
 
 

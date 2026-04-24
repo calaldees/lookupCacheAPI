@@ -28,5 +28,6 @@ async def lookup(session: aiohttp.ClientSession, id: str) -> JsonObject:
             variables=dict(playoutId=id),
         ),
     ) as response:
-        return (await response.json())["data"]["track"]
-    return {}
+        data = await response.json()
+        return data["data"]["track"]
+    return None
