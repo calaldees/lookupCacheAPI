@@ -21,9 +21,11 @@ log = logging.getLogger(__name__)
 CACHE_TIMEOUT = datetime.timedelta(
     minutes=int(os.environ.get("CACHE_TIMEOUT_MINUTES", "1"))
 )
+CACHE_PATH = Path(os.environ.get("CACHE_PATH", "./__cache/lookup.sqlite"))
+CACHE_PATH.parent.mkdir(exist_ok=True)
 
 database_config = SQLAlchemyAsyncConfig(
-    connection_string="sqlite+aiosqlite:///lookup.sqlite",
+    connection_string=f"sqlite+aiosqlite:///{CACHE_PATH}",
     create_all=True,
     metadata=Base.metadata,
 )
@@ -32,10 +34,14 @@ README = Path("README.md").read_text()
 
 
 @asynccontextmanager
-async def aiohttp_session(app: litestar.Litestar) -> AsyncGenerator[aiohttp.ClientSession]:
+async def aiohttp_session(
+    app: litestar.Litestar,
+) -> AsyncGenerator[aiohttp.ClientSession]:
     async with aiohttp.ClientSession() as session:
         app.state.aiohttp_session = session
         yield session
+
+
 def provide_aiohttp_session(request: litestar.Request) -> aiohttp.ClientSession:
     return request.app.state.aiohttp_session
 
@@ -46,21 +52,27 @@ async def root() -> str:
 
 
 @litestar.get("/lookup/{id:str}")
-async def lookup_item(id: str, db_session: AsyncSession, session: aiohttp.ClientSession) -> JsonObject:
+async def lookup_item(
+    id: str, db_session: AsyncSession, session: aiohttp.ClientSession
+) -> JsonObject:
     now = datetime.datetime.now()
-    item: LookupItem = (await db_session.scalars(sqlalchemy.select(LookupItem).where(LookupItem.id == id))).first()
+    item: LookupItem = (
+        await db_session.scalars(
+            sqlalchemy.select(LookupItem).where(LookupItem.id == id)
+        )
+    ).first()
     if item and (item.timestamp > now - CACHE_TIMEOUT):
-        #log.info(f'cached {id} - remaining {CACHE_TIMEOUT + (item.timestamp - now)}')
+        # log.info(f'cached {id} - remaining {CACHE_TIMEOUT + (item.timestamp - now)}')
         return item.payload
 
     item_payload = await lookup(session, id)
 
     if item:
-        #log.info(f'update {id}')
+        # log.info(f'update {id}')
         item.payload = item_payload
         item.timestamp = now
     else:
-        #log.info(f'new {id}')
+        # log.info(f'new {id}')
         db_session.add(LookupItem(id=id, payload=item_payload, timestamp=now))
     await db_session.commit()
 
@@ -75,5 +87,5 @@ def create_app() -> litestar.LiteStar:
         ),
         plugins=(SQLAlchemyPlugin(config=database_config),),
         lifespan=[aiohttp_session],
-        dependencies={'session': litestar.di.Provide(provide_aiohttp_session)},
+        dependencies={"session": litestar.di.Provide(provide_aiohttp_session)},
     )

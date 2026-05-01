@@ -2,3 +2,4 @@ __*/
 .*/
 *.sqlite
 *.lock
+.env
