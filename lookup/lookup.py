@@ -17,6 +17,7 @@ async def lookup(session: aiohttp.ClientSession, id: str) -> JsonObject:
                 query track($playoutId: String!) {
                     track(playoutId: $playoutId) {
                         id
+                        playoutId
                         title
                         artist
                         artwork {
